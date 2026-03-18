@@ -4,11 +4,13 @@ import unittest
 
 from scripts.imaging.core import (
     CanvasSize,
+    compute_uniform_scale,
     fit_with_padding,
     iter_image_files,
     natural_sort_key,
     normalize_skew_angle,
     page_size_to_pixels,
+    scale_dimensions,
     should_rotate_for_orientation,
 )
 
@@ -54,6 +56,16 @@ class GeometryTests(unittest.TestCase):
 
     def test_original_page_size_returns_none(self) -> None:
         self.assertIsNone(page_size_to_pixels("ORIGINAL", dpi=300, orientation="portrait"))
+
+    def test_compute_uniform_scale_uses_largest_cropped_page(self) -> None:
+        scale = compute_uniform_scale(
+            [(1000, 800), (900, 700), (950, 780)],
+            CanvasSize(width=1200, height=1600),
+        )
+        self.assertAlmostEqual(scale, 1.2)
+
+    def test_scale_dimensions_applies_shared_scale(self) -> None:
+        self.assertEqual(scale_dimensions((900, 700), 1.2), (1080, 840))
 
 
 if __name__ == "__main__":

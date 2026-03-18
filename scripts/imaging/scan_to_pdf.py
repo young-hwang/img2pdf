@@ -3,16 +3,19 @@ from __future__ import annotations
 import argparse
 import math
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
 from .core import (
     SUPPORTED_EXTENSIONS,
     CanvasSize,
+    compute_uniform_scale,
     fit_with_padding,
     iter_image_files,
     normalize_skew_angle,
     page_size_to_pixels,
+    scale_dimensions,
     should_rotate_for_orientation,
 )
 
@@ -26,6 +29,7 @@ def require_pillow():
         ) from exc
     return Image, ImageOps
 
+
 def require_cv2():
     try:
         import cv2  # type: ignore
@@ -35,6 +39,13 @@ def require_cv2():
             "pip install opencv-python"
         ) from exc
     return cv2
+
+
+@dataclass
+class PreparedPage:
+    source_path: Path
+    image: object
+    cropped_size: tuple[int, int]
 
 
 def detect_skew_angle(image: Image.Image, max_angle: float = 10.0) -> float | None:
@@ -69,13 +80,10 @@ def deskew_image(image: Image.Image, max_angle: float = 10.0) -> Image.Image:
     )
 
 
-def normalize_page(
+def prepare_image(
     image: Image.Image,
     *,
-    page_size: str,
-    dpi: int,
     orientation: str,
-    grayscale: bool,
     deskew: bool,
 ) -> Image.Image:
     Image, ImageOps = require_pillow()
@@ -91,20 +99,75 @@ def normalize_page(
     if deskew:
         normalized = deskew_image(normalized)
 
+    return normalized.convert("RGB")
+
+
+def detect_content_box(
+    image: Image.Image,
+    *,
+    background_threshold: int,
+) -> tuple[int, int, int, int] | None:
+    grayscale = image.convert("L")
+    mask = grayscale.point(
+        lambda value: 255 if value < background_threshold else 0,
+        mode="1",
+    )
+    return mask.getbbox()
+
+
+def crop_to_content(
+    image: Image.Image,
+    *,
+    trim_margins: bool,
+    background_threshold: int,
+) -> Image.Image:
+    if not trim_margins:
+        return image.copy()
+
+    content_box = detect_content_box(
+        image,
+        background_threshold=background_threshold,
+    )
+    if content_box is None:
+        return image.copy()
+    return image.crop(content_box)
+
+
+def render_page(
+    image: Image.Image,
+    *,
+    canvas_size: CanvasSize | None,
+    grayscale: bool,
+    shared_scale: float | None,
+) -> Image.Image:
+    Image, _ = require_pillow()
+
     if grayscale:
-        normalized = normalized.convert("L")
+        renderable = image.convert("L")
     else:
-        normalized = normalized.convert("RGB")
+        renderable = image.convert("RGB")
 
-    canvas_size = page_size_to_pixels(page_size, dpi, orientation)
     if canvas_size is None:
-        return normalized
+        return renderable
 
-    resized_size = fit_with_padding(normalized.size, canvas_size)
-    resized = normalized.resize(resized_size, Image.Resampling.LANCZOS)
+    if shared_scale is None:
+        resized_size = fit_with_padding(renderable.size, canvas_size)
+    else:
+        resized_size = scale_dimensions(renderable.size, shared_scale)
+        if (
+            resized_size[0] > canvas_size.width
+            or resized_size[1] > canvas_size.height
+        ):
+            resized_size = fit_with_padding(renderable.size, canvas_size)
+
+    resized = renderable.resize(resized_size, Image.Resampling.LANCZOS)
 
     background_color = 255 if resized.mode == "L" else (255, 255, 255)
-    canvas = Image.new(resized.mode, (canvas_size.width, canvas_size.height), background_color)
+    canvas = Image.new(
+        resized.mode,
+        (canvas_size.width, canvas_size.height),
+        background_color,
+    )
     offset = (
         (canvas_size.width - resized.width) // 2,
         (canvas_size.height - resized.height) // 2,
@@ -163,6 +226,23 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Enable or disable OpenCV-based text skew correction.",
     )
     parser.add_argument(
+        "--trim-margins",
+        action="store_true",
+        help="Crop outer white scan margins after rotation and deskew.",
+    )
+    parser.add_argument(
+        "--background-threshold",
+        type=int,
+        default=245,
+        help="Grayscale threshold used to detect white background when trimming margins.",
+    )
+    parser.add_argument(
+        "--global-scale",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use one shared scale factor for all trimmed pages. Defaults to enabled.",
+    )
+    parser.add_argument(
         "--save-normalized-dir",
         type=Path,
         help="Optional directory to save normalized pages for inspection.",
@@ -176,6 +256,8 @@ def validate_args(args: argparse.Namespace) -> None:
         raise SystemExit(f"Input directory does not exist: {args.input_dir}")
     if args.dpi <= 0:
         raise SystemExit("--dpi must be a positive integer.")
+    if args.background_threshold < 1 or args.background_threshold > 255:
+        raise SystemExit("--background-threshold must be between 1 and 255.")
     if args.deskew:
         try:
             require_cv2()
@@ -192,27 +274,52 @@ def process_directory(args: argparse.Namespace) -> list[Image.Image]:
             f"Supported extensions: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
         )
 
-    normalized_pages: list[Image.Image] = []
+    canvas_size = page_size_to_pixels(args.page_size, args.dpi, args.orientation)
+    prepared_pages: list[PreparedPage] = []
     save_dir = args.save_normalized_dir
     if save_dir:
         save_dir.mkdir(parents=True, exist_ok=True)
 
-    for index, file_path in enumerate(files, start=1):
+    for file_path in files:
         with Image.open(file_path) as image:
-            normalized = normalize_page(
+            prepared = prepare_image(
                 image,
-                page_size=args.page_size,
-                dpi=args.dpi,
                 orientation=args.orientation,
-                grayscale=args.grayscale,
                 deskew=args.deskew,
             )
+        cropped = crop_to_content(
+            prepared,
+            trim_margins=args.trim_margins,
+            background_threshold=args.background_threshold,
+        )
+        prepared_pages.append(
+            PreparedPage(
+                source_path=file_path,
+                image=cropped,
+                cropped_size=cropped.size,
+            )
+        )
 
+    shared_scale: float | None = None
+    if canvas_size is not None and args.trim_margins and args.global_scale:
+        shared_scale = compute_uniform_scale(
+            [page.cropped_size for page in prepared_pages],
+            canvas_size,
+        )
+
+    normalized_pages: list[Image.Image] = []
+    for index, page in enumerate(prepared_pages, start=1):
+        normalized = render_page(
+            page.image,
+            canvas_size=canvas_size,
+            grayscale=args.grayscale,
+            shared_scale=shared_scale,
+        )
         normalized_pages.append(normalized)
 
         if save_dir:
             suffix = ".png" if normalized.mode == "RGBA" else ".jpg"
-            output_name = f"{index:04d}_{file_path.stem}{suffix}"
+            output_name = f"{index:04d}_{page.source_path.stem}{suffix}"
             normalized.save(save_dir / output_name, quality=95)
 
     return normalized_pages

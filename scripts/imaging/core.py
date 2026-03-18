@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -99,3 +100,26 @@ def fit_with_padding(
     resized_width = max(1, int(round(width * scale)))
     resized_height = max(1, int(round(height * scale)))
     return resized_width, resized_height
+
+
+def compute_uniform_scale(
+    content_sizes: list[tuple[int, int]],
+    canvas_size: CanvasSize,
+) -> float:
+    if not content_sizes:
+        raise ValueError("content_sizes must not be empty.")
+
+    max_width = max(width for width, _ in content_sizes)
+    max_height = max(height for _, height in content_sizes)
+    return min(canvas_size.width / max_width, canvas_size.height / max_height)
+
+
+def scale_dimensions(
+    image_size: tuple[int, int],
+    scale: float,
+) -> tuple[int, int]:
+    width, height = image_size
+    return (
+        max(1, int(round(width * scale))),
+        max(1, int(round(height * scale))),
+    )
