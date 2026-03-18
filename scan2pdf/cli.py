@@ -4,9 +4,11 @@ import argparse
 import math
 import sys
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from typing import Sequence
 
+from . import __version__
 from .core import (
     SUPPORTED_EXTENSIONS,
     CanvasSize,
@@ -18,6 +20,13 @@ from .core import (
     scale_dimensions,
     should_rotate_for_orientation,
 )
+
+
+def get_version() -> str:
+    try:
+        return package_version("scan2pdf")
+    except PackageNotFoundError:
+        return __version__
 
 
 def require_pillow():
@@ -192,7 +201,13 @@ def save_pdf(images: Sequence[Image.Image], output_path: Path, dpi: int) -> None
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
+        prog="scan2pdf",
         description="Normalize scanned images and export them as a single PDF."
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {get_version()}",
     )
     parser.add_argument("input_dir", type=Path, help="Directory containing scanned images.")
     parser.add_argument("output_pdf", type=Path, help="Destination PDF path.")
@@ -338,4 +353,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
-

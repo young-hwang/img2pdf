@@ -1,14 +1,31 @@
 # scan2pdf
 
-`scan2pdf` is a reusable Python CLI for normalizing scanned page images and exporting a single PDF.
+Turn a folder of scanned images into a cleaned, consistently sized PDF.
 
-## Docs
+## Quick Start
 
-- [Install Guide](docs/install.md)
-- [Usage Guide](docs/usage.md)
-- [Options Reference](docs/options.md)
+Clone the repository, install it, and run the CLI:
 
-## Features
+```bash
+git clone <REPOSITORY_URL>
+cd image-to-pdf
+python3 -m pip install .
+scan2pdf ./scans ./output/book.pdf
+```
+
+If you want deskew support, install the optional OpenCV dependency:
+
+```bash
+python3 -m pip install ".[deskew]"
+```
+
+You can also install the tool in an isolated CLI environment:
+
+```bash
+pipx install .
+```
+
+## What You Get
 
 - natural filename ordering
 - EXIF-aware rotation handling
@@ -20,14 +37,70 @@
 - grayscale export option
 - deterministic multi-page PDF output
 
-## Usage
+## Basic Usage
 
 ```bash
-python -m scan2pdf ./scans ./output/book.pdf
+scan2pdf ./scans ./output/book.pdf
 ```
 
-## Tests
+Input:
+
+- `./scans`: directory containing page images
+
+Output:
+
+- `./output/book.pdf`: generated multi-page PDF
+
+## Common Commands
+
+Basic conversion:
 
 ```bash
-python -m unittest discover -s tests
+scan2pdf ./scans ./output/book.pdf
 ```
+
+Letter-sized grayscale output:
+
+```bash
+scan2pdf ./scans ./output/book.pdf \
+  --page-size LETTER \
+  --dpi 300 \
+  --orientation portrait \
+  --grayscale
+```
+
+Trim white borders and keep a shared scale across pages:
+
+```bash
+scan2pdf ./scans ./output/book.pdf \
+  --trim-margins \
+  --background-threshold 245 \
+  --global-scale
+```
+
+Save normalized page images for inspection:
+
+```bash
+scan2pdf ./scans ./output/book.pdf \
+  --save-normalized-dir ./output/normalized
+```
+
+## Development
+
+Run tests:
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+Check the installed CLI version:
+
+```bash
+scan2pdf --version
+```
+
+## Documentation
+
+- [Install Guide](docs/install.md)
+- [Usage Guide](docs/usage.md)
+- [Options Reference](docs/options.md)

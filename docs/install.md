@@ -3,21 +3,37 @@
 ## Requirements
 
 - Python 3.9+
-- `Pillow`
-- `opencv-python` for deskew support
+- `pip`
 
-## Install
+## Install From Source
 
 ```bash
+git clone <REPOSITORY_URL>
+cd image-to-pdf
 python -m venv .venv
 source .venv/bin/activate
-pip install Pillow opencv-python
+python -m pip install --upgrade pip
+python -m pip install .
 ```
 
-## Minimal Dependency Setup
-
-If you do not need deskew support, install only `Pillow`.
+After installation, run:
 
 ```bash
-pip install Pillow
+scan2pdf ./scans ./output/book.pdf
+```
+
+## Install With Deskew Support
+
+If you want `--deskew`, install the optional OpenCV dependency:
+
+```bash
+python -m pip install ".[deskew]"
+```
+
+## Install As a Standalone CLI
+
+If you prefer an isolated tool install:
+
+```bash
+pipx install .
 ```

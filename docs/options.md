@@ -2,6 +2,7 @@
 
 Application settings are provided through CLI arguments.
 
+- `--version`: Prints the installed CLI version and exits.
 - `input_dir`: Source directory that contains scanned page images. Files are loaded in natural filename order.
 - `output_pdf`: Destination path for the generated PDF file.
 - `--page-size`: Output canvas preset. Use `A4`, `A5`, or `LETTER` for a fixed paper size, or `ORIGINAL` to keep each page at its processed image size.
