@@ -1,6 +1,7 @@
 # scan2pdf
 
 Turn a folder of scanned images into a cleaned, consistently sized PDF.
+It can also merge multiple existing PDF files from one directory into a single PDF.
 
 ## Quick Start
 
@@ -10,6 +11,9 @@ Install directly from GitHub:
 python3 -m pip install "git+https://github.com/young-hwang/scan2pdf.git"
 scan2pdf ./scans ./output/book.pdf
 ```
+
+This installs the required Python runtime dependencies declared by the package,
+including `Pillow` and `pypdf`.
 
 If you prefer an isolated CLI install:
 
@@ -37,6 +41,8 @@ If you want deskew support from GitHub without cloning:
 ```bash
 python3 -m pip install "scan2pdf[deskew] @ git+https://github.com/young-hwang/scan2pdf.git"
 ```
+
+This adds the optional deskew dependencies such as `opencv-python`.
 
 If you want searchable OCR PDFs, also install system Tesseract with the language data you need.
 For Korean and English OCR, install `kor` and `eng` trained data for your Tesseract package.
@@ -70,6 +76,20 @@ Input:
 Output:
 
 - `./output/book.pdf`: generated multi-page PDF
+
+Merge mode:
+
+```bash
+scan2pdf ./pdfs ./output/combined.pdf --merge-pdfs
+```
+
+Input:
+
+- `./pdfs`: directory containing PDF files
+
+Output:
+
+- `./output/combined.pdf`: merged PDF in natural filename order
 
 ## Common Commands
 
@@ -135,6 +155,12 @@ scan2pdf ./scans ./output/book-ocr.pdf \
   --save-normalized-dir ./output/normalized \
   --ocr \
   --ocr-lang kor+eng
+```
+
+Merge multiple PDF files from one directory:
+
+```bash
+scan2pdf ./pdfs ./output/combined.pdf --merge-pdfs
 ```
 
 ## Development

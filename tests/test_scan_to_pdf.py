@@ -10,6 +10,7 @@ from scan2pdf.core import (
     compute_uniform_scale,
     fit_with_padding,
     iter_image_files,
+    iter_pdf_files,
     natural_sort_key,
     normalize_skew_angle,
     page_size_to_pixels,
@@ -19,6 +20,7 @@ from scan2pdf.core import (
 from scan2pdf.cli import (
     command_exists,
     detect_content_box,
+    merge_pdfs,
     parse_args,
     render_page,
     run_tesseract_ocr,
@@ -39,6 +41,15 @@ class NaturalSortTests(unittest.TestCase):
 
             ordered = [path.name for path in iter_image_files(root)]
             self.assertEqual(ordered, ["page1.png", "page2.jpg", "page10.jpg"])
+
+    def test_iter_pdf_files_filters_and_sorts_pdf_files(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name in ["chapter10.pdf", "chapter2.pdf", "notes.txt", "chapter1.pdf"]:
+                (root / name).write_bytes(b"sample")
+
+            ordered = [path.name for path in iter_pdf_files(root)]
+            self.assertEqual(ordered, ["chapter1.pdf", "chapter2.pdf", "chapter10.pdf"])
 
 
 class GeometryTests(unittest.TestCase):
@@ -131,6 +142,10 @@ class CliTests(unittest.TestCase):
         args = parse_args(["./scans", "./output/book.pdf"])
         self.assertEqual(args.jpeg_quality, 85)
 
+    def test_parse_args_supports_pdf_merge_mode(self) -> None:
+        args = parse_args(["./pdfs", "./output/book.pdf", "--merge-pdfs"])
+        self.assertTrue(args.merge_pdfs)
+
     def test_parse_args_accepts_custom_jpeg_quality(self) -> None:
         args = parse_args(
             ["./scans", "./output/book.pdf", "--jpeg-quality", "72"]
@@ -184,6 +199,42 @@ class CliTests(unittest.TestCase):
             input_dir.mkdir()
             args = parse_args([str(input_dir), "./output/book.pdf"])
             validate_args(args)
+
+    @patch("scan2pdf.cli.require_pypdf")
+    @patch("scan2pdf.cli.require_pillow")
+    @patch("scan2pdf.cli.require_cv2")
+    def test_validate_args_pdf_merge_does_not_require_image_libraries(
+        self,
+        mock_require_cv2,
+        mock_require_pillow,
+        mock_require_pypdf,
+    ) -> None:
+        with TemporaryDirectory() as tmp:
+            input_dir = Path(tmp) / "pdfs"
+            input_dir.mkdir()
+            args = parse_args([str(input_dir), "./output/book.pdf", "--merge-pdfs"])
+            validate_args(args)
+
+        mock_require_pypdf.assert_called_once()
+        mock_require_pillow.assert_not_called()
+        mock_require_cv2.assert_not_called()
+
+    @patch("scan2pdf.cli.require_pypdf")
+    def test_validate_args_rejects_ocr_with_pdf_merge(self, mock_require_pypdf) -> None:
+        with TemporaryDirectory() as tmp:
+            input_dir = Path(tmp) / "pdfs"
+            input_dir.mkdir()
+            args = parse_args(
+                [str(input_dir), "./output/book.pdf", "--merge-pdfs", "--ocr"]
+            )
+            with self.assertRaises(SystemExit) as exc:
+                validate_args(args)
+
+        self.assertEqual(
+            str(exc.exception),
+            "--ocr cannot be used together with --merge-pdfs.",
+        )
+        mock_require_pypdf.assert_called_once()
 
     @patch("scan2pdf.cli.require_pillow")
     @patch("scan2pdf.cli.require_cv2")
@@ -239,6 +290,29 @@ class OcrTests(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+
+
+class PdfMergeTests(unittest.TestCase):
+    def test_merge_pdfs_combines_sorted_documents(self) -> None:
+        from pypdf import PdfReader, PdfWriter
+
+        with TemporaryDirectory() as tmp:
+            input_dir = Path(tmp) / "pdfs"
+            input_dir.mkdir()
+            output_path = Path(tmp) / "merged.pdf"
+
+            for name, width in [("chapter2.pdf", 200), ("chapter1.pdf", 100)]:
+                writer = PdfWriter()
+                writer.add_blank_page(width=width, height=144)
+                with (input_dir / name).open("wb") as handle:
+                    writer.write(handle)
+
+            merge_pdfs(input_dir, output_path)
+
+            reader = PdfReader(str(output_path))
+            self.assertEqual(len(reader.pages), 2)
+            self.assertEqual(float(reader.pages[0].mediabox.width), 100.0)
+            self.assertEqual(float(reader.pages[1].mediabox.width), 200.0)
 
 
 if __name__ == "__main__":

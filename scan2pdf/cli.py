@@ -14,10 +14,12 @@ from typing import Sequence
 from . import __version__
 from .core import (
     SUPPORTED_EXTENSIONS,
+    SUPPORTED_PDF_EXTENSIONS,
     CanvasSize,
     compute_uniform_scale,
     fit_with_padding,
     iter_image_files,
+    iter_pdf_files,
     normalize_skew_angle,
     page_size_to_pixels,
     scale_dimensions,
@@ -474,6 +476,30 @@ def save_pdf_with_ocr(
             writer.write(handle)
 
 
+def merge_pdfs(
+    input_dir: Path,
+    output_path: Path,
+) -> None:
+    PdfReader, PdfWriter = require_pypdf()
+    files = iter_pdf_files(input_dir)
+    if not files:
+        supported = ", ".join(sorted(SUPPORTED_PDF_EXTENSIONS))
+        raise SystemExit(
+            f"No supported PDF files found in {input_dir} "
+            f"(supported: {supported})."
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    writer = PdfWriter()
+    for file_path in files:
+        reader = PdfReader(str(file_path))
+        for page in reader.pages:
+            writer.add_page(page)
+
+    with output_path.open("wb") as handle:
+        writer.write(handle)
+
+
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="scan2pdf",
@@ -484,8 +510,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="version",
         version=f"%(prog)s {get_version()}",
     )
-    parser.add_argument("input_dir", type=Path, help="Directory containing scanned images.")
+    parser.add_argument(
+        "input_dir",
+        type=Path,
+        help="Directory containing scanned images, or PDFs when --merge-pdfs is used.",
+    )
     parser.add_argument("output_pdf", type=Path, help="Destination PDF path.")
+    parser.add_argument(
+        "--merge-pdfs",
+        action="store_true",
+        help="Merge PDF files from the input directory into one output PDF.",
+    )
     parser.add_argument(
         "--page-size",
         default="A4",
@@ -568,9 +603,22 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    require_pillow()
     if not args.input_dir.exists() or not args.input_dir.is_dir():
         raise SystemExit(f"Input directory does not exist: {args.input_dir}")
+    if args.merge_pdfs:
+        try:
+            require_pypdf()
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+        if args.ocr:
+            raise SystemExit("--ocr cannot be used together with --merge-pdfs.")
+        if args.save_normalized_dir is not None:
+            raise SystemExit(
+                "--save-normalized-dir cannot be used together with --merge-pdfs."
+            )
+        return
+
+    require_pillow()
     if args.dpi <= 0:
         raise SystemExit("--dpi must be a positive integer.")
     if args.jpeg_quality < 1 or args.jpeg_quality > 100:
@@ -659,6 +707,9 @@ def process_directory(args: argparse.Namespace) -> list[Image.Image]:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     validate_args(args)
+    if args.merge_pdfs:
+        merge_pdfs(args.input_dir, args.output_pdf)
+        return 0
     images = process_directory(args)
     if args.ocr:
         save_pdf_with_ocr(

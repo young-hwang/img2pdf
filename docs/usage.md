@@ -3,6 +3,7 @@
 ## Overview
 
 `scan2pdf` is a Python CLI for normalizing scanned page images and exporting them as a single PDF.
+It can also merge multiple existing PDF files from one directory into a single output PDF.
 It is designed for scanned documents that need consistent page orientation, margin cleanup, sizing, and deterministic page ordering.
 
 ## Install
@@ -16,6 +17,14 @@ scan2pdf ./scans ./output/book.pdf
 ```
 
 By default this produces an image-only PDF. Searchable text is added only when you pass `--ocr`.
+
+## Merge Existing PDFs
+
+```bash
+scan2pdf ./pdfs ./output/combined.pdf --merge-pdfs
+```
+
+This reads `.pdf` files from the input directory in natural filename order and concatenates them into one output file.
 
 ## Common Options
 

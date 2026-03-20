@@ -11,6 +11,9 @@
 python3 -m pip install "git+https://github.com/young-hwang/scan2pdf.git"
 ```
 
+This installs the required Python runtime dependencies declared by the package,
+including `Pillow` and `pypdf`.
+
 Verify the CLI:
 
 ```bash
@@ -49,6 +52,8 @@ If you want `--deskew` without cloning the repository:
 ```bash
 python3 -m pip install "scan2pdf[deskew] @ git+https://github.com/young-hwang/scan2pdf.git"
 ```
+
+This also installs the optional deskew dependency `opencv-python`.
 
 ## Install With Deskew Support From a Local Clone
 
