@@ -49,6 +49,7 @@ For Korean and English OCR, install `kor` and `eng` trained data for your Tesser
 - optional OpenCV-based deskew
 - optional Tesseract-based OCR for searchable PDFs
 - optional white-margin trimming after rotation correction
+- optional export of normalized page images for inspection
 - top-centered page placement for more consistent document alignment
 - shared scaling across trimmed pages for stable content size
 - fixed page-size canvas with centered white padding
@@ -77,6 +78,8 @@ Basic conversion:
 ```bash
 scan2pdf ./scans ./output/book.pdf
 ```
+
+This default command writes an image-only PDF. Searchable text is added only when `--ocr` is explicitly enabled.
 
 Letter-sized grayscale output:
 
@@ -113,10 +116,23 @@ scan2pdf ./scans ./output/book.pdf \
   --save-normalized-dir ./output/normalized
 ```
 
+This option only saves the intermediate normalized page images. It does not change the PDF output mode.
+
 Generate a searchable OCR PDF:
 
 ```bash
 scan2pdf ./scans ./output/book.pdf \
+  --ocr \
+  --ocr-lang kor+eng
+```
+
+Combine trimming, normalized-page export, and OCR:
+
+```bash
+scan2pdf ./scans ./output/book-ocr.pdf \
+  --trim-margins \
+  --background-threshold 245 \
+  --save-normalized-dir ./output/normalized \
   --ocr \
   --ocr-lang kor+eng
 ```

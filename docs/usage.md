@@ -15,6 +15,8 @@ See [Install Guide](install.md).
 scan2pdf ./scans ./output/book.pdf
 ```
 
+By default this produces an image-only PDF. Searchable text is added only when you pass `--ocr`.
+
 ## Common Options
 
 ```bash
@@ -27,6 +29,8 @@ scan2pdf ./scans ./output/book.pdf \
   --deskew \
   --save-normalized-dir ./output/normalized
 ```
+
+`--save-normalized-dir` writes processed page images for inspection, but it does not change the generated PDF into an OCR PDF.
 
 ## Margin Trimming
 
@@ -59,6 +63,16 @@ scan2pdf ./scans ./output/book.pdf --no-deskew
 
 ```bash
 scan2pdf ./scans ./output/book.pdf \
+  --ocr \
+  --ocr-lang kor+eng
+```
+
+To keep debug images while also producing an OCR PDF:
+
+```bash
+scan2pdf ./scans ./output/book-ocr.pdf \
+  --trim-margins \
+  --save-normalized-dir ./output/normalized \
   --ocr \
   --ocr-lang kor+eng
 ```
