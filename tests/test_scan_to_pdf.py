@@ -90,6 +90,19 @@ class GeometryTests(unittest.TestCase):
             (40, 60, 161, 241),
         )
 
+    def test_detect_content_box_ignores_small_corner_speckles(self) -> None:
+        image = Image.new("RGB", (240, 320), "white")
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((50, 70, 190, 260), fill="black")
+        draw.rectangle((0, 0, 2, 2), fill="black")
+        draw.rectangle((236, 316, 239, 319), fill="black")
+        draw.rectangle((3, 150, 4, 151), fill="black")
+
+        self.assertEqual(
+            detect_content_box(image, background_threshold=245),
+            (50, 70, 191, 261),
+        )
+
     def test_render_page_supports_top_center_alignment(self) -> None:
         image = Image.new("RGB", (50, 50), "black")
         canvas = CanvasSize(width=100, height=200)

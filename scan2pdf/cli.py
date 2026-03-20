@@ -87,15 +87,118 @@ class PreparedPage:
     cropped_size: tuple[int, int]
 
 
+def _weighted_median(
+    values: list[float],
+    weights: list[float],
+) -> float | None:
+    if not values or not weights or len(values) != len(weights):
+        return None
+
+    ordered = sorted(zip(values, weights), key=lambda item: item[0])
+    total_weight = sum(weight for _, weight in ordered)
+    if total_weight <= 0:
+        return None
+
+    threshold = total_weight / 2
+    cumulative = 0.0
+    for value, weight in ordered:
+        cumulative += weight
+        if cumulative >= threshold:
+            return value
+    return ordered[-1][0]
+
+
+def _component_bboxes(mask) -> list[tuple[int, int, int, int, int]]:
+    import numpy as np  # type: ignore
+
+    height, width = mask.shape
+    visited = np.zeros((height, width), dtype=bool)
+    components: list[tuple[int, int, int, int, int]] = []
+
+    for start_y, start_x in np.argwhere(mask):
+        if visited[start_y, start_x]:
+            continue
+
+        stack = [(int(start_y), int(start_x))]
+        visited[start_y, start_x] = True
+        min_x = max_x = int(start_x)
+        min_y = max_y = int(start_y)
+        area = 0
+
+        while stack:
+            y, x = stack.pop()
+            area += 1
+            min_x = min(min_x, x)
+            max_x = max(max_x, x)
+            min_y = min(min_y, y)
+            max_y = max(max_y, y)
+
+            for next_y in range(max(0, y - 1), min(height, y + 2)):
+                for next_x in range(max(0, x - 1), min(width, x + 2)):
+                    if visited[next_y, next_x] or not mask[next_y, next_x]:
+                        continue
+                    visited[next_y, next_x] = True
+                    stack.append((next_y, next_x))
+
+        components.append((min_x, min_y, max_x + 1, max_y + 1, area))
+
+    return components
+
+
 def detect_skew_angle(image: Image.Image, max_angle: float = 10.0) -> float | None:
     cv2 = require_cv2()
     import numpy as np  # type: ignore
 
     grayscale = np.array(image.convert("L"))
+    blurred = cv2.GaussianBlur(grayscale, (5, 5), 0)
     _, binary = cv2.threshold(
-        grayscale, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+        blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
     )
-    coords = cv2.findNonZero(binary)
+
+    horizontal_kernel_width = max(15, image.width // 30)
+    horizontal_kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT,
+        (horizontal_kernel_width, 3),
+    )
+    connected = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, horizontal_kernel)
+    edges = cv2.Canny(connected, 50, 150, apertureSize=3)
+    min_line_length = max(30, image.width // 12)
+    lines = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=max(30, image.width // 20),
+        minLineLength=min_line_length,
+        maxLineGap=max(10, image.width // 80),
+    )
+
+    if lines is not None:
+        angles: list[float] = []
+        weights: list[float] = []
+        for line in lines[:, 0]:
+            x1, y1, x2, y2 = (int(value) for value in line)
+            dx = x2 - x1
+            dy = y2 - y1
+            if dx == 0 and dy == 0:
+                continue
+            angle = math.degrees(math.atan2(dy, dx))
+            while angle <= -90:
+                angle += 180
+            while angle > 90:
+                angle -= 180
+            if abs(angle) > max_angle:
+                continue
+            length = math.hypot(dx, dy)
+            if length < min_line_length:
+                continue
+            angles.append(angle)
+            weights.append(length)
+
+        weighted_angle = _weighted_median(angles, weights)
+        if weighted_angle is not None and not math.isnan(weighted_angle):
+            return weighted_angle
+
+    coords = cv2.findNonZero(connected)
     if coords is None or len(coords) < 200:
         return None
 
@@ -163,36 +266,47 @@ def detect_content_box(
         return None
 
     height, width = mask.shape
-    edge_margin_x = max(10, width // 200)
-    edge_margin_y = max(10, height // 200)
-    analysis_mask = mask.copy()
-    analysis_mask[:edge_margin_y, :] = False
-    analysis_mask[-edge_margin_y:, :] = False
-    analysis_mask[:, :edge_margin_x] = False
-    analysis_mask[:, -edge_margin_x:] = False
+    edge_margin_x = max(10, width // 100)
+    edge_margin_y = max(10, height // 100)
+    min_component_area = max(24, (width * height) // 20000)
+    min_component_width = max(3, width // 200)
+    min_component_height = max(3, height // 200)
 
-    if not analysis_mask.any():
-        analysis_mask = mask
+    filtered_mask = np.zeros_like(mask, dtype=bool)
+    components = _component_bboxes(mask)
+    for left, top, right, bottom, area in components:
+        component_width = right - left
+        component_height = bottom - top
+        touches_edge = (
+            left <= edge_margin_x
+            or top <= edge_margin_y
+            or right >= width - edge_margin_x
+            or bottom >= height - edge_margin_y
+        )
+        is_tiny = (
+            area < min_component_area
+            or component_width < min_component_width
+            or component_height < min_component_height
+        )
+        if touches_edge and is_tiny:
+            continue
+        if is_tiny and area < min_component_area // 2:
+            continue
+        filtered_mask[top:bottom, left:right] |= mask[top:bottom, left:right]
 
-    row_threshold = max(8, width // 100)
-    col_threshold = max(8, height // 100)
-    active_rows = np.flatnonzero(analysis_mask.sum(axis=1) >= row_threshold)
-    active_cols = np.flatnonzero(analysis_mask.sum(axis=0) >= col_threshold)
+    if not filtered_mask.any():
+        filtered_mask = mask
+
+    row_threshold = max(4, width // 150)
+    col_threshold = max(4, height // 150)
+    active_rows = np.flatnonzero(filtered_mask.sum(axis=1) >= row_threshold)
+    active_cols = np.flatnonzero(filtered_mask.sum(axis=0) >= col_threshold)
 
     if len(active_rows) == 0 or len(active_cols) == 0:
-        active_rows = np.flatnonzero(mask.sum(axis=1) >= row_threshold)
-        active_cols = np.flatnonzero(mask.sum(axis=0) >= col_threshold)
-
-    if len(active_rows) == 0 or len(active_cols) == 0:
-        ys, xs = np.nonzero(mask)
+        ys, xs = np.nonzero(filtered_mask)
         if len(xs) == 0 or len(ys) == 0:
             return None
-        return (
-            int(xs.min()),
-            int(ys.min()),
-            int(xs.max()) + 1,
-            int(ys.max()) + 1,
-        )
+        return (int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1)
 
     left = int(active_cols[0])
     right = int(active_cols[-1]) + 1
