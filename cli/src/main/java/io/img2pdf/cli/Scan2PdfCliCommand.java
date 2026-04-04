@@ -67,14 +67,14 @@ public class Scan2PdfCliCommand implements Callable<Integer> {
 
             var result = useCase.handle(request);
 
-            IO.println("PDF created: " + result.outputPdf());
+            System.out.println("PDF created: " + result.outputPdf());
 
             if (!result.ocrText().isBlank()) {
                 if (ocrTextOutput != null) {
-                    IO.println("OCR test written to: " + ocrTextOutput);
+                    System.out.println("OCR test written to: " + ocrTextOutput);
                 } else {
-                    IO.println("----- OCR RESULT -----");
-                    IO.println(result.ocrText());
+                    System.out.println("----- OCR RESULT -----");
+                    System.out.println(result.ocrText());
                 }
             }
 

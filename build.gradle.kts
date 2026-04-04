@@ -15,6 +15,12 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+subprojects {
+    tasks.withType<Jar>().configureEach {
+        archiveBaseName = "img2pdf-${project.name}"
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
 }

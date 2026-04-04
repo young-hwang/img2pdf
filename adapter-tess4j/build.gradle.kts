@@ -11,7 +11,10 @@ repositories {
 }
 
 dependencies {
+    implementation(project(":domain"))
     implementation(project(":application"))
+    implementation("net.sourceforge.tess4j:tess4j:5.13.0")
+
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

@@ -1,5 +1,6 @@
 plugins {
     id("java")
+    id("application")
 }
 
 group = "io.img2pdf"
@@ -25,4 +26,9 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+application {
+    mainClass = "io.img2pdf.cli.Main"
+    applicationName = "img2pdf-cli"
 }
