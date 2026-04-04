@@ -2,3 +2,5 @@
 .venv/
 output/
 scans/
+.gradle/
+.idea/
