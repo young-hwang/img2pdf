@@ -1,10 +1,9 @@
-# scan2pdf Usage Guide
+# img2pdf Usage Guide
 
 ## Overview
 
-`scan2pdf` is a Python CLI for normalizing scanned page images and exporting them as a single PDF.
-It also supports merging multiple existing PDFs into one file.
-It is designed for scanned documents that need consistent page orientation, margin cleanup, sizing, and deterministic page ordering.
+`img2pdf` is a Java CLI for turning image files or directories into a PDF.
+It can optionally deskew scans, crop empty margins, and run Tesseract OCR.
 
 ## Install
 
@@ -13,120 +12,110 @@ See [Install Guide](install.md).
 ## Basic Usage
 
 ```bash
-scan2pdf ./scans ./output/book.pdf
+./cli/build/install/cli/bin/img2pdf-cli ./images --output ./output/book.pdf
 ```
 
-By default this produces an image-only PDF. Searchable text is added only when you pass `--ocr`.
+By default this produces an image-only PDF.
 
-## Merge Existing PDFs
+## OCR
 
 ```bash
-scan2pdf merge ./pdfs ./combined.pdf
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --ocr \
+  --lang kor+eng
 ```
 
-The merge command reads PDF files from the input folder in natural filename order and writes one combined PDF.
-
-## Common Options
+If your trained data is stored outside the default location:
 
 ```bash
-scan2pdf ./scans ./output/book.pdf \
-  --page-size LETTER \
-  --dpi 300 \
-  --jpeg-quality 75 \
-  --orientation portrait \
-  --grayscale \
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --ocr \
+  --lang kor+eng \
+  --tessdata /opt/homebrew/share/tessdata
+```
+
+Write recognized text to a file as well:
+
+```bash
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --ocr \
+  --ocr-text-out ./output/book.txt
+```
+
+## Deskew and Crop
+
+```bash
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
   --deskew \
-  --save-normalized-dir ./output/normalized
+  --crop
 ```
 
-`--save-normalized-dir` writes processed page images for inspection, but it does not change the generated PDF into an OCR PDF.
-
-## Smaller B5 Output
+Use a stable temporary directory for intermediate deskew files:
 
 ```bash
-scan2pdf ./scans ./output/book.pdf \
-  --page-size B5 \
-  --dpi 200 \
-  --grayscale \
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --deskew \
+  --deskew-temp-dir ./.img2pdf-temp
+```
+
+## Page Sizing
+
+Keep each source image at its processed size:
+
+```bash
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --page-size ORIGINAL
+```
+
+Render onto a fixed paper size:
+
+```bash
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --page-size LETTER \
+  --dpi 300
+```
+
+Disable aspect-ratio preservation if you explicitly want stretch-to-page behavior:
+
+```bash
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --page-size A4 \
+  --stretch
+```
+
+## PDF Image Compression
+
+JPEG with lower quality for smaller files:
+
+```bash
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --image-compression JPEG \
   --jpeg-quality 60
 ```
 
-This is a good starting point when you want smaller output files without dropping to very low JPEG quality.
-
-## Margin Trimming
+Lossless embedding:
 
 ```bash
-scan2pdf ./scans ./output/book.pdf \
-  --trim-margins \
-  --background-threshold 245 \
-  --global-scale
+./cli/build/install/cli/bin/img2pdf-cli ./images \
+  --output ./output/book.pdf \
+  --image-compression LOSSLESS
 ```
-
-## Top-Aligned Document Placement
-
-`scan2pdf` now uses `--content-align top-center` by default so trimmed pages stay aligned to the top of the canvas instead of drifting vertically.
-
-To restore classic centered placement:
-
-```bash
-scan2pdf ./scans ./output/book.pdf \
-  --trim-margins \
-  --content-align center
-```
-
-## Without OpenCV Deskew
-
-```bash
-scan2pdf ./scans ./output/book.pdf --no-deskew
-```
-
-## Searchable OCR PDF
-
-```bash
-scan2pdf ./scans ./output/book.pdf \
-  --ocr \
-  --ocr-lang kor+eng
-```
-
-To keep debug images while also producing an OCR PDF:
-
-```bash
-scan2pdf ./scans ./output/book-ocr.pdf \
-  --trim-margins \
-  --save-normalized-dir ./output/normalized \
-  --ocr \
-  --ocr-lang kor+eng
-```
-
-If Tesseract is not on your default `PATH`, specify it directly:
-
-```bash
-scan2pdf ./scans ./output/book.pdf \
-  --ocr \
-  --tesseract-cmd /opt/homebrew/bin/tesseract
-```
-
-`pypdf` is already installed with the package. For OCR mode, the extra system dependency is Tesseract plus the language data you want to use.
 
 ## Configuration
 
 See [Options Reference](options.md).
 
-## Recommended Starting Point
-
-```bash
-scan2pdf ./scans ./output/book.pdf \
-  --page-size B5 \
-  --dpi 200 \
-  --jpeg-quality 80 \
-  --orientation portrait \
-  --trim-margins \
-  --background-threshold 245 \
-  --global-scale
-```
-
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests
+./gradlew test
 ```

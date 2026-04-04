@@ -7,12 +7,12 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${REPO_ROOT}"
 
-python3 -m scan2pdf ./scans ./output/book.pdf \
-  --trim-margins \
-  --background-threshold 245 \
-  --page-size B5 \
+./gradlew :cli:run --args="./images --output ./output/book.pdf \
+  --page-size A5 \
   --dpi 200 \
   --jpeg-quality 65 \
-  --save-normalized-dir ./output/normalized \
+  --deskew \
+  --crop \
+  --deskew-temp-dir ./.img2pdf-temp \
   --ocr \
-  --ocr-lang kor+eng
+  --lang kor+eng"

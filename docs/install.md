@@ -1,73 +1,39 @@
-# scan2pdf Install Guide
+# img2pdf Install Guide
 
 ## Requirements
 
-- Python 3.9+
-- `pip`
+- JDK 17 or newer
+- Gradle wrapper support from this repository
+- `tesseract` on `PATH` if you want OCR
 
-## Install Directly From GitHub
-
-```bash
-python3 -m pip install "git+https://github.com/young-hwang/scan2pdf.git"
-```
-
-This installs the required Python runtime dependencies declared by the package,
-including `Pillow` and `pypdf`.
-
-Verify the CLI:
+## Build From a Local Clone
 
 ```bash
-scan2pdf --version
+git clone https://github.com/young-hwang/img2pdf.git
+cd img2pdf
+./gradlew :cli:installDist
 ```
 
-## Install As an Isolated CLI
+This generates a standalone launcher under `cli/build/install/cli/bin/`.
 
-If you prefer not to install into your current Python environment:
+## Verify the CLI
 
 ```bash
-pipx install "git+https://github.com/young-hwang/scan2pdf.git"
+./cli/build/install/cli/bin/img2pdf-cli --help
 ```
 
-## Install From a Local Clone
+## Run Without Installing the Distribution
+
+For development, you can run the CLI directly through Gradle:
 
 ```bash
-git clone https://github.com/young-hwang/scan2pdf.git
-cd scan2pdf
-python3 -m venv .venv
-source .venv/bin/activate
-python3 -m pip install --upgrade pip
-python3 -m pip install .
+./gradlew :cli:run --args="./images --output ./output/book.pdf"
 ```
 
-Verify the CLI:
-
-```bash
-scan2pdf --version
-```
-
-## Install With Deskew Support From GitHub
-
-If you want `--deskew` without cloning the repository:
-
-```bash
-python3 -m pip install "scan2pdf[deskew] @ git+https://github.com/young-hwang/scan2pdf.git"
-```
-
-This also installs the optional deskew dependency `opencv-python`.
-
-## Install With Deskew Support From a Local Clone
-
-If you already cloned the repository:
-
-```bash
-python3 -m pip install ".[deskew]"
-```
-
-## OCR Requirements For Searchable PDFs
+## OCR Requirements
 
 `--ocr` requires:
 
-- bundled Python dependency `pypdf` from the base package install
 - system `tesseract`
 - installed Tesseract language data such as `kor` and `eng`
 
@@ -86,5 +52,5 @@ tesseract --list-langs
 ## First Run
 
 ```bash
-scan2pdf ./scans ./output/book.pdf
+./cli/build/install/cli/bin/img2pdf-cli ./images --output ./output/book.pdf
 ```
