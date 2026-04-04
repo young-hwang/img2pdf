@@ -2,6 +2,7 @@ package io.img2pdf.cli;
 
 import io.img2pdf.application.dto.ConvertImagesToPdfRequest;
 import io.img2pdf.application.inbound.ConvertImagesToPdfUseCase;
+import io.img2pdf.domain.model.ImageCompression;
 import io.img2pdf.domain.model.OcrOptions;
 import io.img2pdf.domain.model.PageSize;
 import io.img2pdf.domain.model.PdfOptions;
@@ -41,6 +42,15 @@ public class Scan2PdfCliCommand implements Callable<Integer> {
     private boolean deskew;
 
     @CommandLine.Option(
+            names = {"--crop"},
+            arity = "0..1",
+            defaultValue = "true",
+            fallbackValue = "true",
+            description = "Crop empty scan margins after optional deskew. Set --crop=false to keep full image bounds."
+    )
+    private boolean crop;
+
+    @CommandLine.Option(
             names = {"--deskew-temp-dir"},
             description = "Directory for intermediate deskew images. Defaults to ./.img2pdf-temp"
     )
@@ -58,6 +68,20 @@ public class Scan2PdfCliCommand implements Callable<Integer> {
     @CommandLine.Option(names = {"--dpi"})
     private Integer dpi;
 
+    @CommandLine.Option(
+            names = {"--image-compression"},
+            defaultValue = "JPEG",
+            description = "Image compression used inside the PDF. Valid values: ${COMPLETION-CANDIDATES}."
+    )
+    private ImageCompression imageCompression;
+
+    @CommandLine.Option(
+            names = {"--jpeg-quality"},
+            defaultValue = "75",
+            description = "JPEG quality used for PDF image embedding when --image-compression=JPEG."
+    )
+    private int jpegQuality;
+
     @CommandLine.Option(names = {"--psm"})
     private Integer psm;
 
@@ -71,7 +95,7 @@ public class Scan2PdfCliCommand implements Callable<Integer> {
                     inputs,
                     outputPdf,
                     ocrTextOutput,
-                    new PdfOptions(pageSize, !stretch, deskew, deskewTempDir),
+                    new PdfOptions(pageSize, !stretch, deskew, crop, deskewTempDir, dpi, imageCompression, jpegQuality),
                     new OcrOptions(ocrEnabled, language, tessdataPath, dpi, psm));
 
             var result = useCase.handle(request);

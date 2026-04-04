@@ -4,6 +4,7 @@ import io.img2pdf.application.dto.ConvertImagesToPdfRequest;
 import io.img2pdf.application.outbound.ImagePreProcessorPort;
 import io.img2pdf.application.outbound.OcrProcessorPort;
 import io.img2pdf.application.outbound.PdfWriterPort;
+import io.img2pdf.domain.model.ImageCompression;
 import io.img2pdf.domain.model.OcrOptions;
 import io.img2pdf.domain.model.PageSize;
 import io.img2pdf.domain.model.PdfOptions;
@@ -66,7 +67,7 @@ class ConvertImagesToPdfServiceTest {
                 inputs,
                 Path.of("out.pdf"),
                 null,
-                new PdfOptions(PageSize.ORIGINAL, true, true, null),
+                new PdfOptions(PageSize.ORIGINAL, true, true, true, null, null, ImageCompression.JPEG, 75),
                 new OcrOptions(false, "eng", null, null, null)
         ));
 
@@ -81,6 +82,40 @@ class ConvertImagesToPdfServiceTest {
         );
         assertTrue(maxConcurrentTasks.get() > 1, "Expected image preprocessing to overlap.");
         assertTrue(threadsUsed.size() > 1, "Expected multiple worker threads to be used.");
+    }
+
+    @Test
+    void handleSkipsPreprocessingWhenDeskewAndCropAreBothDisabled() {
+        List<Path> inputs = List.of(
+                Path.of("scan-1.jpeg"),
+                Path.of("scan-2.jpeg")
+        );
+        AtomicInteger preprocessCalls = new AtomicInteger();
+
+        FileCollector fileCollector = new StubFileCollector(inputs);
+        ImagePreProcessorPort preProcessor = (imagePath, options) -> {
+            preprocessCalls.incrementAndGet();
+            return Path.of(imagePath.toString() + ".processed");
+        };
+        CapturingPdfWriter pdfWriter = new CapturingPdfWriter();
+        OcrProcessorPort ocrProcessor = (imagePath, options) -> "";
+        ConvertImagesToPdfService service = new ConvertImagesToPdfService(
+                ocrProcessor,
+                pdfWriter,
+                preProcessor,
+                fileCollector
+        );
+
+        service.handle(new ConvertImagesToPdfRequest(
+                inputs,
+                Path.of("out.pdf"),
+                null,
+                new PdfOptions(PageSize.ORIGINAL, true, false, false, null, null, ImageCompression.JPEG, 75),
+                new OcrOptions(false, "eng", null, null, null)
+        ));
+
+        assertEquals(0, preprocessCalls.get());
+        assertEquals(inputs, pdfWriter.imagePaths);
     }
 
     private static final class StubFileCollector extends FileCollector {

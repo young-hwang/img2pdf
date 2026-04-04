@@ -4,6 +4,9 @@ import io.img2pdf.application.outbound.ImagePreProcessorPort;
 import io.img2pdf.domain.model.PdfOptions;
 
 import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import javax.imageio.stream.ImageOutputStream;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
@@ -12,22 +15,25 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Iterator;
 import java.util.UUID;
 
 public class DeskewImagePreProcessor implements ImagePreProcessorPort {
     private static final Path DEFAULT_DESKEW_TEMP_DIR = Path.of(".img2pdf-temp");
+    private static final String TEMP_IMAGE_FORMAT = "jpeg";
     private static final double MAX_SKEW_ANGLE = 10.0;
     private static final double COARSE_ANGLE_STEP = 1.0;
     private static final double MEDIUM_ANGLE_STEP = 0.25;
     private static final double FINE_ANGLE_STEP = 0.05;
     private static final double MINIMUM_CORRECTION_ANGLE = 0.1;
     private static final int MAX_ANALYSIS_WIDTH = 1000;
-    private static final int CONTENT_PADDING = 12;
+    private static final int MIN_CONTENT_PADDING = 24;
+    private static final double CONTENT_PADDING_RATIO = 0.015;
     private static final double MINIMUM_CONTENT_HEIGHT_RATIO = 0.18;
 
     @Override
     public Path preprocess(Path imagePath, PdfOptions options) {
-        if (!options.deskew()) {
+        if (!options.deskew() && !options.crop()) {
             return imagePath;
         }
 
@@ -41,10 +47,29 @@ public class DeskewImagePreProcessor implements ImagePreProcessorPort {
             Path tempDirectory = resolveDeskewTempDir(options);
             Files.createDirectories(tempDirectory);
             Path outputFile = createDeskewFile(tempDirectory);
-            BufferedImage processedImage = Math.abs(correctionAngle) < MINIMUM_CORRECTION_ANGLE
-                    ? originalImage
-                    : rotateImage(originalImage, correctionAngle);
-            ImageIO.write(processedImage, "png", outputFile.toFile());
+            BufferedImage processedImage = originalImage;
+            if (options.deskew()) {
+                processedImage = Math.abs(correctionAngle) < MINIMUM_CORRECTION_ANGLE
+                        ? originalImage
+                        : rotateImage(originalImage, correctionAngle);
+            }
+            if (options.crop()) {
+                BufferedImage imageBeforeCrop = processedImage;
+                CropResult cropResult = cropImageToContent(imageBeforeCrop);
+                processedImage = cropResult.image();
+                if (!cropResult.bounds().isEmpty()) {
+                    ProcessedImageLayoutRegistry.register(
+                            outputFile,
+                            new ProcessedImageLayoutRegistry.ProcessedImageLayout(
+                                    imageBeforeCrop.getWidth(),
+                                    imageBeforeCrop.getHeight(),
+                                    cropResult.bounds().minX,
+                                    cropResult.bounds().minY
+                            )
+                        );
+                }
+            }
+            writeJpeg(processedImage, outputFile);
             return outputFile;
         } catch (IOException e) {
             throw new IllegalStateException("Failed to deskew image: " + imagePath, e);
@@ -58,7 +83,15 @@ public class DeskewImagePreProcessor implements ImagePreProcessorPort {
             return 0.0;
         }
 
-        BufferedImage contentImage = cropToContentBounds(analysisImage, contentBounds);
+        BufferedImage contentImage = cropToContentBounds(
+                analysisImage,
+                expandBounds(
+                        contentBounds,
+                        analysisImage,
+                        resolveContentPadding(analysisImage.getWidth()),
+                        resolveContentPadding(analysisImage.getHeight())
+                )
+        );
         double coarseAngle = findBestAngle(contentImage, -MAX_SKEW_ANGLE, MAX_SKEW_ANGLE, COARSE_ANGLE_STEP);
         double mediumAngle = findBestAngle(
                 contentImage,
@@ -167,7 +200,32 @@ public class DeskewImagePreProcessor implements ImagePreProcessorPort {
     }
 
     private BufferedImage cropToContentBounds(BufferedImage source) {
-        return cropToContentBounds(source, findContentBounds(source));
+        ContentBounds bounds = findContentBounds(source);
+        if (bounds.isEmpty()) {
+            return source;
+        }
+
+        return cropToContentBounds(
+                source,
+                expandBounds(
+                        bounds,
+                        source,
+                        resolveContentPadding(source.getWidth()),
+                        resolveContentPadding(source.getHeight())
+                )
+        );
+    }
+
+    private CropResult cropImageToContent(BufferedImage source) {
+        ContentBounds bounds = findContentBounds(toBinaryImage(source));
+        if (bounds.isEmpty()) {
+            return new CropResult(source, bounds);
+        }
+
+        int paddingX = resolveContentPadding(source.getWidth());
+        int paddingY = resolveContentPadding(source.getHeight());
+        ContentBounds expandedBounds = expandBounds(bounds, source, paddingX, paddingY);
+        return new CropResult(cropToContentBounds(source, expandedBounds), expandedBounds);
     }
 
     private BufferedImage cropToContentBounds(BufferedImage source, ContentBounds bounds) {
@@ -175,12 +233,19 @@ public class DeskewImagePreProcessor implements ImagePreProcessorPort {
             return source;
         }
 
-        int left = Math.max(0, bounds.minX - CONTENT_PADDING);
-        int top = Math.max(0, bounds.minY - CONTENT_PADDING);
-        int right = Math.min(source.getWidth() - 1, bounds.maxX + CONTENT_PADDING);
-        int bottom = Math.min(source.getHeight() - 1, bounds.maxY + CONTENT_PADDING);
+        return source.getSubimage(bounds.minX, bounds.minY, bounds.width(), bounds.height());
+    }
 
-        return source.getSubimage(left, top, right - left + 1, bottom - top + 1);
+    private int resolveContentPadding(int axisLength) {
+        return Math.max(MIN_CONTENT_PADDING, (int) Math.round(axisLength * CONTENT_PADDING_RATIO));
+    }
+
+    private ContentBounds expandBounds(ContentBounds bounds, BufferedImage source, int paddingX, int paddingY) {
+        int left = Math.max(0, bounds.minX - paddingX);
+        int top = Math.max(0, bounds.minY - paddingY);
+        int right = Math.min(source.getWidth() - 1, bounds.maxX + paddingX);
+        int bottom = Math.min(source.getHeight() - 1, bounds.maxY + paddingY);
+        return new ContentBounds(left, top, right, bottom);
     }
 
     private ContentBounds findContentBounds(BufferedImage source) {
@@ -285,7 +350,7 @@ public class DeskewImagePreProcessor implements ImagePreProcessorPort {
         IOException lastException = null;
 
         for (int attempt = 0; attempt < 10; attempt++) {
-            Path candidate = directory.resolve("img2pdf-deskew-" + UUID.randomUUID() + ".png");
+            Path candidate = directory.resolve("img2pdf-deskew-" + UUID.randomUUID() + ".jpg");
             try {
                 return Files.createFile(candidate);
             } catch (IOException e) {
@@ -296,6 +361,26 @@ public class DeskewImagePreProcessor implements ImagePreProcessorPort {
         throw new IOException("Failed to create deskew output file in " + directory, lastException);
     }
 
+    private void writeJpeg(BufferedImage image, Path outputFile) throws IOException {
+        Iterator<ImageWriter> writers = ImageIO.getImageWritersByFormatName(TEMP_IMAGE_FORMAT);
+        if (!writers.hasNext()) {
+            throw new IOException("No JPEG writer available.");
+        }
+
+        ImageWriter writer = writers.next();
+        try (ImageOutputStream outputStream = ImageIO.createImageOutputStream(outputFile.toFile())) {
+            writer.setOutput(outputStream);
+            ImageWriteParam writeParam = writer.getDefaultWriteParam();
+            if (writeParam.canWriteCompressed()) {
+                writeParam.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+                writeParam.setCompressionQuality(0.9f);
+            }
+            writer.write(null, new javax.imageio.IIOImage(image, null, null), writeParam);
+        } finally {
+            writer.dispose();
+        }
+    }
+
     private record ContentBounds(int minX, int minY, int maxX, int maxY) {
         boolean isEmpty() {
             return maxX < minX || maxY < minY;
@@ -304,5 +389,12 @@ public class DeskewImagePreProcessor implements ImagePreProcessorPort {
         int height() {
             return isEmpty() ? 0 : maxY - minY + 1;
         }
+
+        int width() {
+            return isEmpty() ? 0 : maxX - minX + 1;
+        }
+    }
+
+    private record CropResult(BufferedImage image, ContentBounds bounds) {
     }
 }

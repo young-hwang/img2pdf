@@ -1,5 +1,6 @@
 package io.img2pdf.adapter.pdfbox;
 
+import io.img2pdf.domain.model.ImageCompression;
 import io.img2pdf.domain.model.PageSize;
 import io.img2pdf.domain.model.PdfOptions;
 import org.junit.jupiter.api.Test;
@@ -56,7 +57,7 @@ class DeskewImagePreProcessorTest {
         DeskewImagePreProcessor preProcessor = new DeskewImagePreProcessor();
         Path sourceImage = writeImageToTempFile(createStraightSparseTitlePageImage(), "sparse-title-page");
         Path outputDir = createTestDirectory("sparse");
-        PdfOptions options = new PdfOptions(PageSize.A5, true, true, outputDir);
+        PdfOptions options = new PdfOptions(PageSize.A5, true, true, true, outputDir, null, ImageCompression.JPEG, 75);
 
         Path outputFile = preProcessor.preprocess(sourceImage, options);
 
@@ -65,7 +66,10 @@ class DeskewImagePreProcessorTest {
             assertTrue(Files.exists(outputFile));
             assertEquals(outputDir.toAbsolutePath().normalize(), outputFile.getParent().toAbsolutePath().normalize());
             assertTrue(outputFile.getFileName().toString().startsWith("img2pdf-deskew-"));
-            assertTrue(outputFile.getFileName().toString().endsWith(".png"));
+            assertTrue(outputFile.getFileName().toString().endsWith(".jpg"));
+            BufferedImage cropped = javax.imageio.ImageIO.read(outputFile.toFile());
+            assertTrue(cropped.getWidth() < 1000);
+            assertTrue(cropped.getHeight() < 1400);
         } finally {
             Files.deleteIfExists(outputFile);
             Files.deleteIfExists(sourceImage);
@@ -88,7 +92,7 @@ class DeskewImagePreProcessorTest {
         DeskewImagePreProcessor preProcessor = new DeskewImagePreProcessor();
         Path sourceImage = resolveSampleImagePath();
         Path outputDir = createTestDirectory("configured");
-        PdfOptions options = new PdfOptions(PageSize.A5, true, true, outputDir);
+        PdfOptions options = new PdfOptions(PageSize.A5, true, true, true, outputDir, null, ImageCompression.JPEG, 75);
 
         Path outputFile = preProcessor.preprocess(sourceImage, options);
 
@@ -97,7 +101,11 @@ class DeskewImagePreProcessorTest {
             assertTrue(Files.exists(outputFile));
             assertEquals(outputDir.toAbsolutePath().normalize(), outputFile.getParent().toAbsolutePath().normalize());
             assertTrue(outputFile.getFileName().toString().startsWith("img2pdf-deskew-"));
-            assertTrue(outputFile.getFileName().toString().endsWith(".png"));
+            assertTrue(outputFile.getFileName().toString().endsWith(".jpg"));
+            BufferedImage original = javax.imageio.ImageIO.read(sourceImage.toFile());
+            BufferedImage processed = javax.imageio.ImageIO.read(outputFile.toFile());
+            assertTrue(processed.getWidth() < original.getWidth());
+            assertTrue(processed.getHeight() < original.getHeight());
         } finally {
             if (!outputFile.toAbsolutePath().normalize().equals(sourceImage.toAbsolutePath().normalize())) {
                 Files.deleteIfExists(outputFile);
@@ -111,7 +119,7 @@ class DeskewImagePreProcessorTest {
         DeskewImagePreProcessor preProcessor = new DeskewImagePreProcessor();
         Path sourceImage = resolveSampleImagePath();
         Path defaultOutputDir = Path.of(".img2pdf-temp").toAbsolutePath().normalize();
-        PdfOptions options = new PdfOptions(PageSize.A5, true, true, null);
+        PdfOptions options = new PdfOptions(PageSize.A5, true, true, true, null, null, ImageCompression.JPEG, 75);
 
         Path outputFile = preProcessor.preprocess(sourceImage, options);
 
@@ -119,12 +127,49 @@ class DeskewImagePreProcessorTest {
             assertTrue(Files.exists(outputFile));
             assertEquals(defaultOutputDir, outputFile.getParent().toAbsolutePath().normalize());
             assertTrue(outputFile.getFileName().toString().startsWith("img2pdf-deskew-"));
-            assertTrue(outputFile.getFileName().toString().endsWith(".png"));
+            assertTrue(outputFile.getFileName().toString().endsWith(".jpg"));
         } finally {
             if (!outputFile.toAbsolutePath().normalize().equals(sourceImage.toAbsolutePath().normalize())) {
                 Files.deleteIfExists(outputFile);
             }
             Files.deleteIfExists(defaultOutputDir);
+        }
+    }
+
+    @Test
+    void preprocessCanDisableCroppingWhileKeepingDeskewOutput() throws IOException {
+        DeskewImagePreProcessor preProcessor = new DeskewImagePreProcessor();
+        Path sourceImage = writeImageToTempFile(createStraightSparseTitlePageImage(), "no-crop");
+        Path outputDir = createTestDirectory("no-crop");
+        PdfOptions options = new PdfOptions(PageSize.A5, true, false, false, outputDir, null, ImageCompression.JPEG, 75);
+
+        Path outputFile = preProcessor.preprocess(sourceImage, options);
+
+        try {
+            assertEquals(sourceImage.toAbsolutePath().normalize(), outputFile.toAbsolutePath().normalize());
+        } finally {
+            Files.deleteIfExists(sourceImage);
+            Files.deleteIfExists(outputDir);
+        }
+    }
+
+    @Test
+    void preprocessCanCropWithoutDeskew() throws IOException {
+        DeskewImagePreProcessor preProcessor = new DeskewImagePreProcessor();
+        Path sourceImage = writeImageToTempFile(createStraightSparseTitlePageImage(), "crop-only");
+        Path outputDir = createTestDirectory("crop-only");
+        PdfOptions options = new PdfOptions(PageSize.A5, true, false, true, outputDir, null, ImageCompression.JPEG, 75);
+
+        Path outputFile = preProcessor.preprocess(sourceImage, options);
+
+        try {
+            BufferedImage processed = javax.imageio.ImageIO.read(outputFile.toFile());
+            assertTrue(processed.getWidth() < 1000);
+            assertTrue(processed.getHeight() < 1400);
+        } finally {
+            Files.deleteIfExists(outputFile);
+            Files.deleteIfExists(sourceImage);
+            Files.deleteIfExists(outputDir);
         }
     }
 

@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -86,7 +87,7 @@ public class ConvertImagesToPdfService implements ConvertImagesToPdfUseCase {
     }
 
     private List<Path> preprocessImages(List<Path> imageFiles, ConvertImagesToPdfRequest request) {
-        if (!request.pdfOptions().deskew()) {
+        if (!request.pdfOptions().deskew() && !request.pdfOptions().crop()) {
             return imageFiles;
         }
 
