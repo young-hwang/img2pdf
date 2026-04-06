@@ -13,7 +13,14 @@ repositories {
 dependencies {
     implementation(project(":domain"))
     implementation(project(":application"))
+
     implementation("net.sourceforge.tess4j:tess4j:5.13.0")
+
+    // specify
+    implementation("org.jspecify:jspecify:1.0.0")
+
+    // Logging
+    implementation("org.slf4j:slf4j-api:2.0.9")
 
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
